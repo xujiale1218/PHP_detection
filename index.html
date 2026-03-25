@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>漏洞检测系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        safe: '#10b981',
+                        danger: '#ef4444',
+                        primary: '#3b82f6',
+                        neutral: '#1f2937',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .code-block {
+                @apply bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm font-mono whitespace-pre-wrap;
+            }
+            .result-card {
+                @apply rounded-xl shadow-md p-4 mb-3 transition-all;
+            }
+            .safe-card {
+                @apply bg-green-50 border-l-4 border-safe;
+            }
+            .danger-card {
+                @apply bg-red-50 border-l-4 border-danger;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-6xl mx-auto px-4 py-10">
+        <!-- 头部 -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-neutral mb-2">
+                <i class="fa-solid fa-shield-halved text-primary"></i> PHP 代码漏洞检测系统
+            </h1>
+            <p class="text-gray-500">支持：命令执行｜文件包含｜SQL注入｜XSS｜动态调用｜变形混淆</p>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="bg-white rounded-2xl shadow-md p-6 mb-8">
+            <h2 class="text-lg font-semibold mb-3 flex items-center">
+                <i class="fa-solid fa-code text-primary mr-2"></i> 粘贴待检测代码
+            </h2>
+            <textarea id="codeInput" class="code-block w-full h-64 resize-none" placeholder="在此粘贴 PHP 代码..."></textarea>
+            <div class="mt-4 flex justify-end">
+                <button id="analyzeBtn" class="bg-primary hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-medium transition-all">
+                    <i class="fa-solid fa-search mr-1"></i> 开始检测
+                </button>
+            </div>
+        </div>
+
+        <!-- 结果区域 -->
+        <div id="resultSection" class="hidden">
+            <div class="bg-white rounded-2xl shadow-md p-6">
+                <h2 class="text-lg font-semibold mb-4 flex items-center">
+                    <i class="fa-solid fa-list-check text-primary mr-2"></i> 检测结果
+                </h2>
+                <div id="resultStats" class="flex gap-6 mb-6 text-sm">
+                    <div class="flex items-center"><i class="fa-solid fa-list-ol mr-2 text-gray-500"></i> 总行数：<span id="total" class="font-semibold ml-1"></span></div>
+                    <div class="flex items-center"><i class="fa-solid fa-bug text-danger mr-2"></i> 漏洞行数：<span id="vuln" class="font-semibold text-danger ml-1"></span></div>
+                    <div class="flex items-center"><i class="fa-solid fa-check text-safe mr-2"></i> 安全行数：<span id="safe" class="font-semibold text-safe ml-1"></span></div>
+                </div>
+                <div id="resultList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const codeInput = document.getElementById('codeInput');
+        const resultSection = document.getElementById('resultSection');
+        const resultList = document.getElementById('resultList');
+        const totalSpan = document.getElementById('total');
+        const vulnSpan = document.getElementById('vuln');
+        const safeSpan = document.getElementById('safe');
+
+        analyzeBtn.addEventListener('click', async () => {
+            const code = codeInput.value.trim();
+            if (!code) return alert('请输入代码');
+
+            analyzeBtn.disabled = true;
+            analyzeBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 检测中...';
+
+            try {
+                const res = await fetch('http://127.0.0.1:8000/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+                const data = await res.json();
+                showResult(data);
+            } catch (err) {
+                alert('请求失败，请确保后端服务已启动！');
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.innerHTML = '<i class="fa-solid fa-search mr-1"></i> 开始检测';
+            }
+        });
+
+        function showResult(data) {
+            resultSection.classList.remove('hidden');
+            totalSpan.textContent = data.total_statements;
+            vulnSpan.textContent = data.vulnerable_statements;
+            safeSpan.textContent = data.safe_statements;
+            resultList.innerHTML = '';
+
+            data.results.forEach(item => {
+                const isVuln = item.is_vulnerable;
+                const type = item.vuln_type;
+                const code = item.statement;
+
+                const card = document.createElement('div');
+                card.className = isVuln ? 'result-card danger-card' : 'result-card safe-card';
+
+                const icon = isVuln
+                    ? '<i class="fa-solid fa-circle-exclamation text-danger mr-2"></i>'
+                    : '<i class="fa-solid fa-circle-check text-safe mr-2"></i>';
+
+                const typeLabel = isVuln
+                    ? `<span class="font-medium text-danger">${type}</span>`
+                    : `<span class="font-medium text-safe">${type}</span>`;
+
+                card.innerHTML = `
+                    <div class="flex items-start">
+                        ${icon}
+                        <div class="flex-1">
+                            <div class="mb-1">${typeLabel}</div>
+                            <div class="text-gray-700 text-sm">${code}</div>
+                        </div>
+                    </div>
+                `;
+                resultList.appendChild(card);
+            });
+        }
+    </script>
+</body>
+</html>
